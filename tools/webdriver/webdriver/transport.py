@@ -1,7 +1,7 @@
 import json
 import select
 
-from six import text_type, PY3, binary_type
+from six import text_type, PY3
 from six.moves.http_client import HTTPConnection
 from six.moves.urllib import parse as urlparse
 
