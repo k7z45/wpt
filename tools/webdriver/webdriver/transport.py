@@ -1,13 +1,79 @@
 import json
 import select
 
-from six import text_type, PY3
+from six import text_type, PY3, binary_type
 from six.moves.http_client import HTTPConnection
 from six.moves.urllib import parse as urlparse
 
 from . import error
 
 """Implements HTTP transport for the WebDriver wire protocol."""
+
+
+missing = object()
+
+
+class ResponseHeaders(dict):
+    """Read-only dictionary-like API for accessing response headers.
+
+    This class always returns all headers with the same name (separated by
+    commas). It doesn't ensure header types (e.g. binary vs string).
+    """
+    def __init__(self, items):
+        for key, value in items:
+            key = key.lower()
+            values = []
+            if dict.__contains__(self, key):
+                values = dict.__getitem__(self, key)
+            values.append(value)
+            dict.__setitem__(self, key, values)
+
+    def __getitem__(self, key):
+        """Get all headers of a certain (case-insensitive) name. If there is
+        more than one, the values are returned comma separated"""
+        values = dict.__getitem__(self, key.lower())
+        if len(values) == 1:
+            return values[0]
+        else:
+            return b", ".join(values)
+
+    def __setitem__(self, name, value):
+        raise Exception
+
+    def get(self, key, default=None):
+        """Get a string representing all headers with a particular value,
+        with multiple headers separated by a comma. If no header is found
+        return a default value
+
+        :param key: The header name to look up (case-insensitive)
+        :param default: The value to return in the case of no match
+        """
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def get_list(self, key, default=missing):
+        """Get all the header values for a particular field name as
+        a list"""
+        try:
+            return dict.__getitem__(self, key.lower())
+        except KeyError:
+            if default is not missing:
+                return default
+            else:
+                raise
+
+    def __contains__(self, key):
+        return dict.__contains__(self, key.lower())
+
+    def iteritems(self):
+        for item in self:
+            yield item, self[item]
+
+    def itervalues(self):
+        for item in self:
+            yield self[item]
 
 
 class Response(object):
@@ -40,7 +106,7 @@ class Response(object):
     def from_http(cls, http_response, decoder=json.JSONDecoder, **kwargs):
         try:
             body = json.load(http_response, cls=decoder, **kwargs)
-            headers = dict(http_response.getheaders())
+            headers = ResponseHeaders(http_response.getheaders())
         except ValueError:
             raise ValueError("Failed to decode response body as JSON:\n" +
                 http_response.read())
